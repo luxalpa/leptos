@@ -543,7 +543,7 @@ pub fn server_macro_impl(
     Ok(quote::quote! {
         #args_docs
         #docs
-        #[derive(Debug, #derives)]
+        #[derive(#derives)]
         #addl_path
         pub struct #struct_name {
             #(#fields),*

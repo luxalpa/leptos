@@ -99,6 +99,24 @@ cfg_if! {
             }
         }
 
+    } else if #[cfg(feature = "bitcode")] {
+        use base64::Engine as _;
+        use base64::engine::general_purpose::STANDARD_NO_PAD;
+
+        impl<T> Serializable for T
+        where
+        T: bitcode::Decode + bitcode::Encode,
+        {
+            fn ser(&self) -> Result<String, SerializationError> {
+                let bytes = bitcode::encode(self).map_err(|e| SerializationError::Serialize(Rc::new(e)))?;
+                Ok(STANDARD_NO_PAD.encode(bytes))
+            }
+
+            fn de(serialized: &str) -> Result<Self, SerializationError> {
+                let bytes = STANDARD_NO_PAD.decode(serialized.as_bytes()).map_err(|e| SerializationError::Deserialize(Rc::new(e)))?;
+                bitcode::decode(&bytes).map_err(|e| SerializationError::Deserialize(Rc::new(e)))
+            }
+        }
     }
     // otherwise, or if serde is chosen, default to serde
     else {

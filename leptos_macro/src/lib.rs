@@ -589,6 +589,11 @@ pub fn template(tokens: TokenStream) -> TokenStream {
 #[proc_macro_error::proc_macro_error]
 #[proc_macro_attribute]
 pub fn component(args: proc_macro::TokenStream, s: TokenStream) -> TokenStream {
+    // fails to link for some reason
+    if std::env::var_os("RUST_IDE_PROC_MACRO_COMPLETION").is_some() {
+        return s;
+    }
+
     let is_transparent = if !args.is_empty() {
         let transparent = parse_macro_input!(args as syn::Ident);
 

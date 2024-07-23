@@ -960,7 +960,7 @@ impl<S, T> SignalSet for Resource<S, T> {
 /// # runtime.dispose();
 /// # }
 /// ```
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, Eq, Hash)]
 pub struct Resource<S, T>
 where
     S: 'static,
@@ -971,6 +971,12 @@ where
     pub(crate) out_ty: PhantomData<T>,
     #[cfg(any(debug_assertions, feature = "ssr"))]
     pub(crate) defined_at: &'static std::panic::Location<'static>,
+}
+
+impl<S: 'static, T: 'static> PartialEq for Resource<S, T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
 }
 
 impl<S, T> Resource<S, T>
@@ -1147,7 +1153,7 @@ where
     resolved: Rc<Cell<bool>>,
     scheduled: Rc<Cell<bool>>,
     version: Rc<Cell<usize>>,
-    suspense_contexts: Rc<RefCell<HashSet<SuspenseContext>>>,
+    pub(crate) suspense_contexts: Rc<RefCell<HashSet<SuspenseContext>>>,
     serializable: ResourceSerialization,
     #[cfg(feature = "experimental-islands")]
     should_send_to_client: Rc<Cell<Option<bool>>>,
@@ -1283,18 +1289,18 @@ where
 
         // on cleanup of this component, remove this read from parent `<Suspense/>`
         // it will be added back in when this is rendered again
-        if let Some(s) = suspense_cx {
-            crate::on_cleanup({
-                let suspense_contexts = Rc::clone(&suspense_contexts);
-                move || {
-                    if let Ok(ref mut contexts) =
-                        suspense_contexts.try_borrow_mut()
-                    {
-                        contexts.remove(&s);
-                    }
-                }
-            });
-        }
+        // if let Some(s) = suspense_cx {
+        //     crate::on_cleanup({
+        //         let suspense_contexts = Rc::clone(&suspense_contexts);
+        //         move || {
+        //             if let Ok(ref mut contexts) =
+        //                 suspense_contexts.try_borrow_mut()
+        //             {
+        //                 contexts.remove(&s);
+        //             }
+        //         }
+        //     });
+        // }
 
         let increment = move |_: Option<()>| {
             if let Some(s) = &suspense_cx {
@@ -1392,12 +1398,22 @@ where
             let suspense_contexts = self.suspense_contexts.clone();
 
             for suspense_context in suspense_contexts.borrow().iter() {
-                suspense_context.increment_for_resource(
-                    self.serializable != ResourceSerialization::Local,
-                    id,
-                );
-                if self.serializable == ResourceSerialization::Blocking {
-                    suspense_context.should_block.set_value(true);
+                let exists = with_runtime(|runtime| {
+                    runtime
+                        .nodes
+                        .borrow()
+                        .contains_key(suspense_context.pending.id)
+                })
+                .unwrap_or_default();
+
+                if exists {
+                    suspense_context.increment_for_resource(
+                        self.serializable != ResourceSerialization::Local,
+                        id,
+                    );
+                    if self.serializable == ResourceSerialization::Blocking {
+                        suspense_context.should_block.set_value(true);
+                    }
                 }
             }
 
@@ -1421,10 +1437,20 @@ where
                     }
 
                     for suspense_context in suspense_contexts.borrow().iter() {
-                        suspense_context.decrement_for_resource(
-                            serializable != ResourceSerialization::Local,
-                            id,
-                        );
+                        let exists = with_runtime(|runtime| {
+                            runtime
+                                .nodes
+                                .borrow()
+                                .contains_key(suspense_context.pending.id)
+                        })
+                        .unwrap_or_default();
+
+                        if exists {
+                            suspense_context.decrement_for_resource(
+                                serializable != ResourceSerialization::Local,
+                                id,
+                            );
+                        }
                     }
                 }
             })

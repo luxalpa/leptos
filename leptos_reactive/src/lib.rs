@@ -91,6 +91,8 @@ mod hydration;
 // contains "private" implementation details right now.
 // could make this unhidden in the future if needed.
 // macro_export makes it public from the crate root anyways
+#[cfg(any(doc, feature = "bitcode"))]
+mod bitcode;
 #[doc(hidden)]
 pub mod macros;
 mod memo;
